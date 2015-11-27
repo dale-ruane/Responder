@@ -32,7 +32,7 @@ def color(txt, code = 1, modifier = 0):
 
 	if txt.startswith('[*]'):
 		settings.Config.PoisonersLogger.warning(txt)
-	
+
 	elif 'Analyze' in txt:
 		settings.Config.AnalyzeLogger.warning(txt)
 
@@ -76,7 +76,7 @@ def RespondToThisName(Name):
 	return False
 
 def RespondToThisHost(ClientIp, Name):
-	return RespondToThisIP(ClientIp) and RespondToThisName(Name)
+	return (RespondToThisIP(ClientIp) and RespondToThisName(Name))
 
 def IsOsX():
 	return True if settings.Config.Os_version == "darwin" else False
@@ -101,7 +101,7 @@ def FindLocalIP(Iface, OURIP):
 		return '0.0.0.0'
 
 	try:
-            
+
                if IsOsX():
 	           return OURIP
                else:
@@ -111,7 +111,7 @@ def FindLocalIP(Iface, OURIP):
 	           ret = s.getsockname()[0]
 	           s.close()
 	           return ret
-                    
+
 	except socket.error:
 		print color("[!] Error: %s: Interface not found" % Iface, 1)
 		sys.exit(-1)
@@ -121,7 +121,7 @@ def WriteData(outfile, data, user):
 
 	logging.info("[*] Captured Hash: %s" % data)
 
-	if not os.path.isfile(outfile):
+	if os.path.isfile(outfile) == False:
 		with open(outfile,"w") as outf:
 			outf.write(data)
 			outf.write("\n")
@@ -161,7 +161,7 @@ def SaveToDb(result):
 		fname = '%s-%s-ClearText-%s.txt' % (result['module'], result['type'], result['client'])
 	else:
 		fname = '%s-%s-%s.txt' % (result['module'], result['type'], result['client'])
-	
+
 	timestamp = time.strftime("%d-%m-%Y %H:%M:%S")
 	logfile = os.path.join(settings.Config.ResponderPATH, 'logs', fname)
 
@@ -170,7 +170,7 @@ def SaveToDb(result):
 	(count,) = res.fetchone()
 
 	if count == 0:
-		
+
 		# Write JtR-style hash string to file
 		with open(logfile,"a") as outf:
 			outf.write(result['fullhash'])
@@ -192,7 +192,7 @@ def SaveToDb(result):
 			print text("[%s] %s Hostname : %s" % (result['module'], result['type'], color(result['hostname'], 3)))
 		if len(result['user']):
 			print text("[%s] %s Username : %s" % (result['module'], result['type'], color(result['user'], 3)))
-		
+
 		# Bu order of priority, print cleartext, fullhash, or hash
 		if len(result['cleartext']):
 			print text("[%s] %s Password : %s" % (result['module'], result['type'], color(result['cleartext'], 3)))
@@ -200,10 +200,42 @@ def SaveToDb(result):
 			print text("[%s] %s Hash     : %s" % (result['module'], result['type'], color(result['fullhash'], 3)))
 		elif len(result['hash']):
 			print text("[%s] %s Hash     : %s" % (result['module'], result['type'], color(result['hash'], 3)))
-			
+
 	else:
 		print color('[*]', 2, 1), 'Skipping previously captured hash for %s' % result['user']
 
+def SaveFileToDb(hash,path):
+        conn = sqlite3.connect('file.db')
+        c = conn.cursor()
+        timestamp = time.strftime("%d-%m-%Y %H:%M:%S")
+        count = 0
+        try:
+                count = c.execute("SELECT * FROM shellter WHERE filehash=?", (hash,))
+                row = count.fetchone()
+                if row is None:
+                        try:
+                                c.execute("INSERT INTO shellter (filehash, filepath) VALUES (?,?)",(hash,path,))
+                                conn.commit()
+                        except sqlite3.Error as e:
+                                print e.args[0]
+
+                        return 0
+                else:
+                        return row
+
+
+                conn.close()
+
+        except sqlite3.Error as e:
+                print e
+
+def checkDB(hash):
+	if os.path.exists(settings.Config.FileDatabase):
+		cursor = sqlite3.connect(settings.Config.FileDatabase)
+		cursor.execute("SELECT COUNT(*) AS count FROM shellter WHERE filehash=?", (hash))
+		return count
+	else:
+		return "Cannot check DB"
 
 def Parse_IPV6_Addr(data):
 
@@ -226,13 +258,13 @@ def Decode_Name(nbname):
 
 		if len(nbname) != 32:
 			return nbname
-		
+
 		l = []
 		for i in range(0, 32, 2):
 			l.append(chr(((ord(nbname[i]) - 0x41) << 4) | ((ord(nbname[i+1]) - 0x41) & 0xf)))
-		
+
 		return filter(lambda x: x in printable, ''.join(l).split('\x00', 1)[0].replace(' ', ''))
-	
+
 	except:
 		return "Illegal NetBIOS name"
 
@@ -264,10 +296,11 @@ def banner():
 	print ""
 	print "  Original work by Laurent Gaffie (lgaffie@trustwave.com)"
 	print "  To kill this script hit CRTL-C"
+	print "  Weaponised by DemmSec"
 	print ""
 
 def StartupMessage():
-	enabled  = color('[ON]', 2, 1) 
+	enabled  = color('[ON]', 2, 1)
 	disabled = color('[OFF]', 1, 1)
 
 	print ""
@@ -297,6 +330,8 @@ def StartupMessage():
 	print '    %-27s' % "Serving EXE" + (enabled if settings.Config.Serve_Exe else disabled)
 	print '    %-27s' % "Serving HTML" + (enabled if settings.Config.Serve_Html else disabled)
 	print '    %-27s' % "Upstream Proxy" + (enabled if settings.Config.Upstream_Proxy else disabled)
+	print '    %-27s' % "Shellter Backdoor" + (enabled if settings.Config.Shellter else disabled)
+	print '    %-27s' % "Fake Anti-Virus Scan" + (enabled if settings.Config.FakeScan else disabled)
 	#print '    %-27s' % "WPAD script" + settings.Config.WPAD_Script
 	print ""
 
