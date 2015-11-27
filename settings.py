@@ -91,7 +91,8 @@ class Settings:
 
 		# Db File
 		self.DatabaseFile    = os.path.join(self.ResponderPATH, config.get('Responder Core', 'Database'))
-
+		self.FileDatabase    = os.path.join(self.ResponderPATH, config.get('Weaponized', 'FileData'))
+	
 		# Log Files
 		self.LogDir = os.path.join(self.ResponderPATH, 'logs')
 
@@ -131,6 +132,8 @@ class Settings:
 		self.Exe_DlName       = config.get('HTTP Server', 'ExeDownloadName')
 		self.WPAD_Script      = config.get('HTTP Server', 'WPADScript')
 		self.HtmlToInject     = config.get('HTTP Server', 'HtmlToInject')
+		self.Shellter         = self.toBool(config.get('Weaponized', 'Shellter'))
+		self.FakeScan	      = self.toBool(config.get('Weaponized', 'FakeScan'))
 
 		if not os.path.exists(self.Html_Filename):
 			print utils.color("/!\ Warning: %s: file not found" % self.Html_Filename, 3, 1)
@@ -163,7 +166,7 @@ class Settings:
 		self.Verbose         = options.Verbose
 		self.CommandLine     = str(sys.argv)
 
-		if self.HtmlToInject is None:
+		if self.HtmlToInject == None:
 			self.HtmlToInject = ''
 
 		self.Bind_To = utils.FindLocalIP(self.Interface, self.OURIP)

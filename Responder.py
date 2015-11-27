@@ -201,7 +201,7 @@ def main():
 			thread.start_new(serve_thread_tcp,('', 3141, HTTP_Proxy))
 
 		if settings.Config.SMB_On_Off:
-			if settings.Config.LM_On_Off:
+			if settings.Config.LM_On_Off == True:
 				from servers.SMB import SMB1LM
 				thread.start_new(serve_thread_tcp,('', 445, SMB1LM))
 				thread.start_new(serve_thread_tcp,('', 139, SMB1LM))
@@ -244,6 +244,9 @@ def main():
 			from servers.DNS import DNS, DNSTCP
 			thread.start_new(serve_thread_udp,('', 53, DNS))
 			thread.start_new(serve_thread_tcp,('', 53, DNSTCP))
+		
+		if settings.Config.Shellter == True:
+			print color('[+]', 2, 1) + " Shellter enabled..."
 
 		print color('[+]', 2, 1) + " Listening for events..."
 
